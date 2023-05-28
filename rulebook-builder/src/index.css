@@ -1,0 +1,25 @@
+body {
+  margin: 0;
+  font-size: 1.25em;
+  line-height: 1.75;
+}
+
+h1,h2,h3,h4,h5,h6 {
+  margin: 3em 0 1em;
+}
+
+p,ul,ol {
+  margin-bottom: 2em;
+  color: #1d1d1d;
+  font-family: sans-serif;
+}
+
+#root {
+  margin: 64px;
+}
+
+footer {
+  padding: 32px;
+  background-color: #dddddd;
+  font-size: .8rem;
+}
