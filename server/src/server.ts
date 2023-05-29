@@ -1,5 +1,5 @@
 import { config } from "./notion-config";
-import { columnTypes } from "./notion-column-types";
+import { notionColumnTypes } from "./notion-column-types";
 import http from "http";
 import { Client } from "@notionhq/client";
 
@@ -7,21 +7,29 @@ import { Client } from "@notionhq/client";
 // create based on our database to send to the React app
 // When the data is queried it will come back in a much more complicated shape, so our goal is to
 // simplify it to make it easy to work with on the front end
-interface CrewMember {
-  name: string;
-  ability: string;
-  instructions: string;
-}
-
-// const { name, text, formula } = columnTypes;
-
-// const dataTypes: string[] {
-//   name: name,
-//   ability: formula,
-//   instructions: text,
+// interface CrewMember {
+//   name: string;
+//   ability: string;
+//   instructions: string;
 // }
 
-// The dotenv library will read from your .env file into these values on `process.env`
+interface NotionColumn {
+  notionColumnName: string,
+  notionColumnType: string,
+}
+
+// interface DatabaseCell {
+//   columnName: string,
+//   cellValue: any,
+// }
+
+const notionColumnsToGet: NotionColumn[] = [
+  { notionColumnName: "Name", notionColumnType: "name" },
+  { notionColumnName: "Ability text", notionColumnType: "formula" },
+  { notionColumnName: "Instructions", notionColumnType: "text" }
+];
+
+// get our database configuration from notion-config.js
 const { databases } = config;
 const notionDatabaseId = databases.crew;
 const notionSecret = config.notionSecretKey;
@@ -69,40 +77,71 @@ const server = http.createServer(async (req, res) => {
 
       // We map over the complex shape of the results and return a nice clean array of
       // objects in the shape of our `CrewMember` interface
-      const list: CrewMember[] = query.results.map((row: any) => {
-        // row represents a row in our database and the name of the column is the
-        // way to reference the data in that column
-        const nameCell = row.properties.Name;
-        const abiltyCell = row.properties["Ability text"];
-        const instructionsCell = row.properties.Instructions;
+      // const list: CrewMember[] = query.results.map((row: any) => {
+      const list: any[] = query.results.map((row: any) => {
 
-        // Depending on the column "type" we selected in Notion there will be different
-        // data available to us (URL vs Date vs text for example) so in order for Typescript
-        // to safely infer we have to check the `type` value.  We had one text and one url column.
-        const isName = nameCell.type === columnTypes.name.notionPropertyType;
-        const isAbility =
-          abiltyCell.type === columnTypes.formula.notionPropertyType;
-        const isInstructions =
-          instructionsCell.type === columnTypes.text.notionPropertyType;
+        // get the actual value we want from each row
+        let crewMember: any = {};
 
-        // Verify the types are correct
-        if (isName && isAbility && isInstructions) {
-          // Pull the string values from the cells using the columnTypes property paths
-          const name = nameCell.title[0].plain_text ?? "";
-          const ability = abiltyCell.formula.string ?? "";
-          const instructions = instructionsCell.rich_text[0] ? instructionsCell.rich_text[0].plain_text : "";
-
+        // for each column of our desired columns array,
+        // get the plain text data from the matching column in the current row
+        notionColumnsToGet.forEach((column: NotionColumn) => {
+          // get the notionColumnType of the column
+          const notionColumnType = notionColumnTypes.find((columnType: string) => {
+            columnType === column.notionColumnType;
+          });
+          const propertyPath: string = notionColumnType.propertyPath;
+          const actualValue: string = row.notionColumnType.propertyPath;
+          // add a property to the crewmember object that well be returned in the server response
+          crewMember[notionColumnName] = 
+        });
           // Return it in our `CrewMember` shape
-          return { name, ability, instructions };
-        }
+          return rowData;
 
-        // If a row is found that does not match the rules we checked it will still return in the
-        // the expected shape but with a NOT_FOUND label
-        return {
-          name: "NOT_FOUND",
-          ability: "NOT_FOUND",
-          instructions: "NOT_FOUND",
-        };
+        // // for each row, get the cells where the columns we specified
+        // // in notionColumnsToGet above intersect with that row.
+
+        // // to do that, map over notionColumnsToGet and generate an object with
+        // // a cell name (the same name as the column)
+        // // and a cell value (the property of the row that matches the column name)
+        // const cells: DatabaseCell[] = notionColumnsToGet.map((column: NotionColumnType) => {
+        //   const columnName: string = column.notionColumnName;
+        //   const cellValue: any[] = row.properties[column.notionColumnName];
+        //   // cellValue will be an object with shape { id: string, type: string, ... }
+        //   return { columnName, cellValue };
+        // });
+
+        // // since different column "types" (dataTypes) in notion have different data types,
+        // // we should verify that each cell value's data "type" matches the type given
+        // // in the notionColumnTypes array for that type of column
+
+        // let passesTypeTest: boolean = true;
+
+        // cells.every((cell: DatabaseCell) => {
+        //   // for each cell, get the column name of our desired data
+        //   const notionColumn = notionColumnsToGet.find((column) => {
+        //     column.notionColumnName === cell.columnName
+        //   });
+        //   if (notionColumn) {
+        //     const notionColumnType = notionColumnTypes.find((type) => {
+        //       type.columnType === notionColumn;
+        //     });
+        //     passesTypeTest = cell.cellValue.type === notionColumnTypes[notionColumnType].propertyType;
+        //   }
+        //   return passesTypeTest;
+        // })
+
+        // if (passesTypeTest) {
+        //   return cells;
+        // }
+
+        // // If a row is found that does not match the rules we checked it will still return in the
+        // // the expected shape but with a NOT_FOUND label
+        // return {
+        //   name: "NOT_FOUND",
+        //   ability: "NOT_FOUND",
+        //   instructions: "NOT_FOUND",
+        // };
       });
 
       res.setHeader("Content-Type", "application/json");
