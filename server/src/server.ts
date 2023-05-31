@@ -1,44 +1,60 @@
-import { config } from "./notion-config";
-import { notionColumnTypes } from "./notion-column-types";
-import http from "http";
-import { Client } from "@notionhq/client";
+import { config } from './notion-config';
+import { NotionDBProperty, notionDBPropertyAttributes } from './notion-column-types';
+import http from 'http';
+import { Client } from '@notionhq/client';
 
-// This is Typescript  interface for the shape of the object we will
-// create based on our database to send to the React app
-// When the data is queried it will come back in a much more complicated shape, so our goal is to
-// simplify it to make it easy to work with on the front end
-// interface CrewMember {
-//   name: string;
-//   ability: string;
-//   instructions: string;
-// }
+function getValueFromNotionDBRow(object: any[], propertyString: string) {
+  const properties: string[] = propertyString.split('.');
+  let value: any = object;
+
+  // for (let i = 0; i < properties.length; i++) {
+    // TODO get the rest of the way down the accessor chain
+    // accounting for if the value is null at an earlier property in the chain
+  for (let i = 0; i < 3; i++) {
+    const property = properties[i];
+    value = value[property];
+
+    if (value === undefined) {
+      // Handle invalid property path
+      return undefined;
+    }
+    else if (Array.isArray(value)) {
+      value = value[0];
+    }
+  }
+
+  return value;
+}
+
+/**
+ * @param columnType 
+ * @returns notionDBProperty
+ */
+function getNotionDBPropertyAttributesByColumnType(columnType: string) {
+  return notionDBPropertyAttributes.find(notionDBProperty => notionDBProperty.columnType === columnType);
+};
 
 interface NotionColumn {
   notionColumnName: string,
   notionColumnType: string,
 }
 
-// interface DatabaseCell {
-//   columnName: string,
-//   cellValue: any,
-// }
-
 const notionColumnsToGet: NotionColumn[] = [
-  { notionColumnName: "Name", notionColumnType: "name" },
-  { notionColumnName: "Ability text", notionColumnType: "formula" },
-  { notionColumnName: "Instructions", notionColumnType: "text" }
+  { notionColumnName: 'Name', notionColumnType: 'name' },
+  { notionColumnName: 'Ability text', notionColumnType: 'formula' },
+  { notionColumnName: 'Instructions', notionColumnType: 'text' }
 ];
 
 // get our database configuration from notion-config.js
 const { databases } = config;
-const notionDatabaseId = databases.crew;
+const notionDBId = databases.crew;
 const notionSecret = config.notionSecretKey;
 
 // Will provide an error to users who forget to create the .env file
 // with their Notion data in it
-if (!notionDatabaseId || !notionSecret) {
+if (!notionDBId || !notionSecret) {
   throw Error(
-    "No keys defined. Define notionSecretKey and database IDs in notion-config.ts"
+    'No keys defined. Define notionSecretKey and database IDs in notion-config.ts'
   );
 }
 
@@ -47,57 +63,53 @@ const notion = new Client({
   auth: notionSecret,
 });
 
-const host = "localhost";
+const host = 'localhost';
 const port = 8000;
 
 // Require an async function here to support await with the DB query
 const server = http.createServer(async (req, res) => {
-  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader('Access-Control-Allow-Origin', '*');
 
   switch (req.url) {
-    case "/":
+    case '/':
       // Query the database and wait for the result
       const query = await notion.databases.query({
-        database_id: notionDatabaseId,
+        database_id: notionDBId,
       });
 
       const results: any[] = query.results;
 
-      // const list: CrewMember[] = query.results.map((row: any) => {
-      //   const name: string = row.properties.Name.title[0].plain_text;
-      //   const ability: string = row.properties["Ability text"].formula.string;
-      //   let instructions: string = "";
-      //   if (row.properties.Instructions.rich_text[0]) {
-      //     instructions = row.properties.Instructions.rich_text[0].plain_text;
-      //   } else {
-      //     instructions = "";
-      //   }
-      //   return { name, ability, instructions };
-      // });
+      const getNotionDBPropertyAttributesByColumnType = (columnType: string) => {
+        return notionDBPropertyAttributes.find(notionDBProperty => notionDBProperty.columnType === columnType);
+      };
 
-      // We map over the complex shape of the results and return a nice clean array of
-      // objects in the shape of our `CrewMember` interface
-      // const list: CrewMember[] = query.results.map((row: any) => {
-      const list: any[] = query.results.map((row: any) => {
+      // We map over the complex shape of the results and return an array of
+      // values from each column of the desired columns (notionColumnsToGet)
+      const list: any[][] = query.results.map((row: any) => {
 
-        // get the actual value we want from each row
-        let crewMember: any = {};
-
-        // for each column of our desired columns array,
         // get the plain text data from the matching column in the current row
-        notionColumnsToGet.forEach((column: NotionColumn) => {
-          // get the notionColumnType of the column
-          const notionColumnType = notionColumnTypes.find((columnType: string) => {
-            columnType === column.notionColumnType;
-          });
-          const propertyPath: string = notionColumnType.propertyPath;
-          const actualValue: string = row.notionColumnType.propertyPath;
-          // add a property to the crewmember object that well be returned in the server response
-          crewMember[notionColumnName] = 
-        });
-          // Return it in our `CrewMember` shape
-          return rowData;
+        const allColumnsPropertyValues: string[] = notionColumnsToGet.map((column: NotionColumn) => {
+          // get the notionColumnType of the column, then its property path
+          const notionProperty: NotionDBProperty|undefined = getNotionDBPropertyAttributesByColumnType(column.notionColumnType);
+          // const notionPropertyValuePath: string|undefined = getNotionDBPropertyAttributesByColumnType(column.notionColumnType)?.propertyValuePath;
+          if (notionProperty) {
+            const notionPropertyValuePath: string = notionProperty.propertyValuePath;
+            const columnName: string = column.notionColumnName;
+            const accessorString = `properties.${columnName}.${notionPropertyValuePath}`;
 
+            // return accessorString;
+            return getValueFromNotionDBRow(row, accessorString);
+            // return row.properties[column.notionColumnName];
+            // return row.properties[column.notionColumnName][notionPropertyValuePath];
+          }
+
+          // if the notion database property doesn't exist in notionDBPropertyAttributes, return an error message
+          return 'could not get property value path';
+        });
+
+        // const notionValuePath: string = columnAttributes.propertyPath;
+
+        return allColumnsPropertyValues;
         // // for each row, get the cells where the columns we specified
         // // in notionColumnsToGet above intersect with that row.
 
@@ -111,9 +123,9 @@ const server = http.createServer(async (req, res) => {
         //   return { columnName, cellValue };
         // });
 
-        // // since different column "types" (dataTypes) in notion have different data types,
-        // // we should verify that each cell value's data "type" matches the type given
-        // // in the notionColumnTypes array for that type of column
+        // // since different column 'types' (dataTypes) in notion have different data types,
+        // // we should verify that each cell value's data 'type' matches the type given
+        // // in the notionColumnAttributes array for that type of column
 
         // let passesTypeTest: boolean = true;
 
@@ -123,10 +135,10 @@ const server = http.createServer(async (req, res) => {
         //     column.notionColumnName === cell.columnName
         //   });
         //   if (notionColumn) {
-        //     const notionColumnType = notionColumnTypes.find((type) => {
+        //     const notionColumnType = notionColumnAttributes.find((type) => {
         //       type.columnType === notionColumn;
         //     });
-        //     passesTypeTest = cell.cellValue.type === notionColumnTypes[notionColumnType].propertyType;
+        //     passesTypeTest = cell.cellValue.type === notionColumnAttributes[notionColumnType].propertyType;
         //   }
         //   return passesTypeTest;
         // })
@@ -138,21 +150,21 @@ const server = http.createServer(async (req, res) => {
         // // If a row is found that does not match the rules we checked it will still return in the
         // // the expected shape but with a NOT_FOUND label
         // return {
-        //   name: "NOT_FOUND",
-        //   ability: "NOT_FOUND",
-        //   instructions: "NOT_FOUND",
+        //   name: 'NOT_FOUND',
+        //   ability: 'NOT_FOUND',
+        //   instructions: 'NOT_FOUND',
         // };
       });
 
-      res.setHeader("Content-Type", "application/json");
+      res.setHeader('Content-Type', 'application/json');
       res.writeHead(200);
       res.end(JSON.stringify(list));
       break;
 
     default:
-      res.setHeader("Content-Type", "application/json");
+      res.setHeader('Content-Type', 'application/json');
       res.writeHead(404);
-      res.end(JSON.stringify({ error: "Resource not found" }));
+      res.end(JSON.stringify({ error: 'Resource not found' }));
   }
 });
 
